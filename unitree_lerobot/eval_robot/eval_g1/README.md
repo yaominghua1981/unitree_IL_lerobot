@@ -41,7 +41,19 @@ eval_g1/
 用于在仿真环境中评估策略性能，可以：
 - 从数据集中读取观测数据
 - 预测动作并与真实动作比较
-- 可选择是否将动作发送到真实机器人
+- 生成预测动作与真实动作的对比图表（保存为 `figure.png`）
+- 可选择是否将动作发送到真实机器人（通过设置 `send_real_robot` 参数）
+
+**评估流程：**
+1. 加载指定的数据集和策略模型
+2. 从数据集中读取观测数据（图像和状态）
+3. 使用策略模型预测动作
+4. 将预测动作与数据集中的真实动作进行比较
+5. 生成可视化图表，显示每个动作维度的对比结果
+6. 可选择将预测动作发送到真实机器人执行（用于验证泛化能力）
+
+**输出文件：**
+- `figure.png`: 包含所有动作维度的预测vs真实动作对比图表
 
 ### 3. 图像服务器 (`image_server/`)
 
@@ -88,6 +100,22 @@ eval_g1/
    python eval_g1.py --repo_id <数据集ID> --policy.path <策略路径>
    ```
 
+   **参数说明：**
+   - `--repo_id`: 数据集仓库ID，格式为 `{hf_username}/{dataset_name}`（例如：`lerobot/test`）
+   - `--policy.path`: 预训练策略路径，可以是：
+     - 本地目录路径：包含 `config.json` 和 `model.safetensors` 的目录
+     - Hugging Face Hub 仓库ID：格式为 `{hf_username}/{model_name}`
+     - 如果不提供此参数，将使用随机初始化的策略（仅用于调试）
+
+   **示例：**
+   ```bash
+   # 使用本地策略文件
+   python eval_g1.py --repo_id lerobot/test --policy.path ./outputs/train/my_smolvla/checkpoint_000200
+
+   # 使用Hub上的策略
+   python eval_g1.py --repo_id lerobot/test --policy.path lerobot/act_aloha_sim_transfer_cube_human
+   ```
+
 3. **程序流程：**
    - 程序会提示输入 's' 开始执行
    - 机器人会移动到初始位置
@@ -122,7 +150,32 @@ robot_config = {
 python eval_g1_dataset.py --repo_id <数据集ID> --policy.path <策略路径>
 ```
 
+**参数说明：**
+- `--repo_id`: 数据集仓库ID，格式为 `{hf_username}/{dataset_name}`（例如：`lerobot/test`）
+- `--policy.path`: 预训练策略路径，可以是：
+  - 本地目录路径：包含 `config.json` 和 `model.safetensors` 的目录
+  - Hugging Face Hub 仓库ID：格式为 `{hf_username}/{model_name}`
+  - 如果不提供此参数，将使用随机初始化的策略（仅用于调试）
+
+**示例：**
+```bash
+# 使用本地策略文件
+python eval_g1_dataset.py --repo_id lerobot/test --policy.path ./outputs/train/my_smolvla/checkpoint_000200
+
+# 使用Hub上的策略
+python eval_g1_dataset.py --repo_id lerobot/test --policy.path lerobot/act_aloha_sim_transfer_cube_human
+
+# 使用随机初始化策略（调试模式）
+python eval_g1_dataset.py --repo_id lerobot/test
+```
+
 ## 注意事项
+
+### 参数验证
+- **数据集ID格式**: 必须符合 `{hf_username}/{dataset_name}` 格式
+- **策略路径**: 如果提供本地路径，确保目录包含完整的模型文件（`config.json` 和 `model.safetensors`）
+- **网络连接**: 使用Hub上的数据集或策略时，需要确保网络连接正常
+- **权限检查**: 确保对指定的数据集和策略有访问权限
 
 ### 安全警告
 ⚠️ **重要安全提醒：**
@@ -156,22 +209,34 @@ python eval_g1_dataset.py --repo_id <数据集ID> --policy.path <策略路径>
 
 ### 常见问题
 
-1. **相机连接失败：**
+1. **数据集加载失败：**
+   - 检查数据集ID格式是否正确（应为 `{hf_username}/{dataset_name}`）
+   - 确认网络连接正常（如果使用Hub上的数据集）
+   - 验证对数据集有访问权限
+   - 检查数据集是否包含所需的观测数据格式
+
+2. **策略模型加载失败：**
+   - 检查策略路径是否正确
+   - 确认本地目录包含完整的模型文件（`config.json` 和 `model.safetensors`）
+   - 验证Hub上的策略模型是否存在且可访问
+   - 检查模型文件是否损坏
+
+3. **相机连接失败：**
    - 检查相机ID配置
    - 确认相机驱动安装正确
    - 验证相机权限
 
-2. **机器人连接失败：**
+4. **机器人连接失败：**
    - 检查网络连接
    - 确认机器人IP地址配置
    - 验证控制权限
 
-3. **图像显示异常：**
+5. **图像显示异常：**
    - 检查图像分辨率配置
    - 确认双目相机拼接参数
    - 验证共享内存分配
 
-4. **控制延迟：**
+6. **控制延迟：**
    - 降低控制频率
    - 检查网络延迟
    - 优化图像处理流程
