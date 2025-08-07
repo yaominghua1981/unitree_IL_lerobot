@@ -123,7 +123,7 @@ class JsonDataset:
         return np.array(result)
 
 
-    def _parse_images(self, episode_path: str, episode_data) -> dict[str, list[np.ndarray]]:
+    def _parse_images(self, episode_path: str, episode_data) -> Dict[str, List[np.ndarray]]:
         """Load and stack images for a given camera key."""
 
         images = defaultdict(list)

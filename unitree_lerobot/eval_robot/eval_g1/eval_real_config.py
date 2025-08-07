@@ -29,6 +29,6 @@ class EvalRealConfig:
 
 
     @classmethod
-    def __get_path_fields__(cls) -> list[str]:
+    def __get_path_fields__(cls) -> List[str]:
         """This enables the parser to load config from the policy using `--policy.path=local/dir`"""
         return ["policy"]
