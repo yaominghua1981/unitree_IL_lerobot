@@ -156,6 +156,12 @@ class ImageClient:
                     print("[Image Client] Failed to decode image.")
                     continue
 
+                # Convert BGR (OpenCV default) to RGB to match training input convention
+                try:
+                    current_image = cv2.cvtColor(current_image, cv2.COLOR_BGR2RGB)
+                except Exception as e:
+                    print(f"[Image Client] BGR2RGB conversion failed: {e}")
+
                 if self.tv_enable_shm:
                     np.copyto(self.tv_img_array, np.array(current_image[:, :self.tv_img_shape[1]]))
                 
