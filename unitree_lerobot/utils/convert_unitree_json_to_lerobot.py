@@ -25,8 +25,8 @@ from pathlib import Path
 from collections import defaultdict
 from typing import Literal, List, Dict, Optional
 
-from lerobot.common.constants import HF_LEROBOT_HOME
-from lerobot.common.datasets.lerobot_dataset import LeRobotDataset
+from lerobot.constants import HF_LEROBOT_HOME
+from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
 from unitree_lerobot.utils.constants import ROBOT_CONFIGS
 

@@ -17,13 +17,13 @@ from torch import nn
 from contextlib import nullcontext
 from multiprocessing import Array, Lock
 
-from lerobot.common.policies.factory import make_policy
-from lerobot.common.utils.utils import (
+from lerobot.policies.factory import make_policy
+from lerobot.utils.utils import (
     get_safe_torch_device,
     init_logging,
 )
 from lerobot.configs import parser
-from lerobot.common.datasets.lerobot_dataset import LeRobotDataset
+from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
 from unitree_lerobot.eval_robot.eval_g1.robot_control.robot_arm import G1_29_ArmController
 from unitree_lerobot.eval_robot.eval_g1.robot_control.robot_hand_unitree import Dex3_1_Controller, Gripper_Controller
