@@ -126,15 +126,41 @@ class ImageClient:
         # Set up ZeroMQ context and socket
         self._context = zmq.Context()
         self._socket = self._context.socket(zmq.SUB)
+        
+        print(f"🔌 图像客户端正在连接到 tcp://{self._server_address}:{self._port}")
         self._socket.connect(f"tcp://{self._server_address}:{self._port}")
         self._socket.setsockopt_string(zmq.SUBSCRIBE, "")
+        
+        # 设置接收超时，避免无限等待
+        self._socket.setsockopt(zmq.RCVTIMEO, 5000)  # 5秒超时
 
-        print("\nImage client has started, waiting to receive data...")
+        print(f"✅ 图像客户端已连接，等待接收数据...")
+        print(f"📋 配置: TV图像形状={self.tv_img_shape}, 手腕图像形状={self.wrist_img_shape}")
+        
+        first_frame_received = False
+        frame_count = 0
         try:
             while self.running:
-                # Receive message
-                message = self._socket.recv()
-                receive_time = time.time()
+                try:
+                    # Receive message
+                    message = self._socket.recv()
+                    frame_count += 1
+                    receive_time = time.time()
+                    
+                    if not first_frame_received:
+                        print(f"🎉 成功接收到第一帧图像数据！")
+                        first_frame_received = True
+                    
+                    # 限流打印：每500帧输出一次摘要，减少 I/O 开销
+                    if frame_count % 500 == 0:
+                        print(f"📸 已接收 {frame_count} 帧图像数据")
+                        
+                except zmq.Again:
+                    print("⏰ 接收图像数据超时，检查图像服务器是否正常工作...")
+                    continue
+                except Exception as e:
+                    print(f"❌ 接收图像数据时发生错误: {e}")
+                    continue
 
                 if self._enable_performance_eval:
                     header_size = struct.calcsize('dI')
