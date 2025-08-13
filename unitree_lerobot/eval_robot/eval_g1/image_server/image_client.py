@@ -148,12 +148,12 @@ class ImageClient:
                     receive_time = time.time()
                     
                     if not first_frame_received:
-                        print(f"🎉 成功接收到第一帧图像数据！")
+                        # print first-frame received only once (silent by default)
                         first_frame_received = True
                     
-                    # 限流打印：每500帧输出一次摘要，减少 I/O 开销
+                    # 限流打印：每500帧输出一次摘要，减少 I/O 开销（默认为静默）
                     if frame_count % 500 == 0:
-                        print(f"📸 已接收 {frame_count} 帧图像数据")
+                        pass
                         
                 except zmq.Again:
                     print("⏰ 接收图像数据超时，检查图像服务器是否正常工作...")
