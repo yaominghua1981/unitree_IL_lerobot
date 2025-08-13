@@ -20,10 +20,10 @@ from unitree_lerobot.utils.weighted_moving_filter import WeightedMovingFilter
 
 unitree_tip_indices = [4, 9, 14] # [thumb, index, middle] in OpenXR
 Dex3_Num_Motors = 7
-kTopicDex3LeftCommand = "rt/dex3/left/cmd"
-kTopicDex3RightCommand = "rt/dex3/right/cmd"
-kTopicDex3LeftState = "rt/dex3/left/state"
-kTopicDex3RightState = "rt/dex3/right/state"
+kTopicDex3LeftCommand = "rt/lf/dex3/left/cmd"
+kTopicDex3RightCommand = "rt/lf/dex3/right/cmd"
+kTopicDex3LeftState = "rt/lf/dex3/left/state"
+kTopicDex3RightState = "rt/lf/dex3/right/state"
 
 
 class Dex3_1_Controller:
@@ -75,11 +75,20 @@ class Dex3_1_Controller:
         self.subscribe_state_thread.daemon = True
         self.subscribe_state_thread.start()
 
+        # Wait for first non-zero state with timeout to avoid blocking forever
+        _wait_start = time.time()
+        _wait_timeout_s = float(os.environ.get("DEX3_WAIT_TIMEOUT_S", "5.0"))
+        _wait_logged = False
         while True:
             if any(self.left_hand_state_array) and any(self.right_hand_state_array):
                 break
+            if time.time() - _wait_start > _wait_timeout_s:
+                print(f"[Dex3_1_Controller] Timeout ({_wait_timeout_s}s). Proceeding without initial hand state.")
+                break
+            if not _wait_logged:
+                print("[Dex3_1_Controller] Waiting to subscribe dds...")
+                _wait_logged = True
             time.sleep(0.01)
-            print("[Dex3_1_Controller] Waiting to subscribe dds...")
 
         hand_control_process = Process(target=self.control_process, args=(left_hand_array, right_hand_array,  self.left_hand_state_array, self.right_hand_state_array,
                                                                           dual_hand_data_lock, dual_hand_state_array, dual_hand_action_array))
