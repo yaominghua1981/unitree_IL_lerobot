@@ -182,6 +182,25 @@ class ImageClient:
                     print("[Image Client] Failed to decode image.")
                     continue
 
+                # 一次性一致性检查：服务端拼接宽度应等于 TV 宽 + Wrist 宽
+                # - 头部双目：期望 head.shape = [H, 1280]，由 pack_images_to_observation 对半切左右
+                # - 腕部双目：期望 wrist.shape = [H, 1280]，同理对半切左右
+                if frame_count == 1:
+                    try:
+                        expected_total_width = 0
+                        if self.tv_img_shape is not None:
+                            expected_total_width += int(self.tv_img_shape[1])
+                        if self.wrist_img_shape is not None:
+                            expected_total_width += int(self.wrist_img_shape[1])
+                        h, w = current_image.shape[:2]
+                        if expected_total_width > 0 and w != expected_total_width:
+                            print(f"⚠️ 服务端拼接宽度 {w} 与配置不一致 (期望 {expected_total_width})。\n"
+                                  f"   - TV 目标宽度: {self.tv_img_shape[1] if self.tv_img_shape is not None else 0}\n"
+                                  f"   - Wrist 目标宽度: {self.wrist_img_shape[1] if self.wrist_img_shape is not None else 0}\n"
+                                  f"   - 实际切分将按左 {self.tv_img_shape[1] if self.tv_img_shape is not None else 0} 与右 {self.wrist_img_shape[1] if self.wrist_img_shape is not None else 0} 进行。")
+                    except Exception:
+                        pass
+
                 # Convert BGR (OpenCV default) to RGB to match training input convention
                 try:
                     current_image = cv2.cvtColor(current_image, cv2.COLOR_BGR2RGB)
@@ -189,9 +208,11 @@ class ImageClient:
                     print(f"[Image Client] BGR2RGB conversion failed: {e}")
 
                 if self.tv_enable_shm:
+                    # TV 图像写入共享内存：从拼接帧最左侧切出 [H, TV_W]
                     np.copyto(self.tv_img_array, np.array(current_image[:, :self.tv_img_shape[1]]))
                 
                 if self.wrist_enable_shm:
+                    # Wrist 图像写入共享内存：从拼接帧最右侧切出 [H, WRIST_W]
                     np.copyto(self.wrist_img_array, np.array(current_image[:, -self.wrist_img_shape[1]:]))
                 
                 if self._image_show:
