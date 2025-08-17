@@ -11,8 +11,34 @@ from lerobot.configs.policies import PreTrainedConfig
 
 @dataclass
 class EvalRealConfig:
-    repo_id: str
+    repo_id: str = ""
     policy: PreTrainedConfig | None = None
+    # runtime overrides
+    arm_type: str = "g1"
+    hand_type: str = "dex3"
+    frequency: float = 50.0
+    # local dataset path (optional)
+    dataset_path: str | None = None
+    # evaluation controls
+    default_start: bool = True
+    startup_delay_s: float = 0.0
+    # dataset episode selection
+    episodes: str | None = None  # csv list of episode indices
+    init_from_episode_index: int = 0
+    # camera flat config from centralized JSON
+    camera_fps: int | None = None
+    head_enabled: int | None = None  # 0/1
+    head_camera_type: str | None = None
+    head_camera_image_shape_h: int | None = None
+    head_camera_image_shape_w: int | None = None
+    head_camera_ids_csv: str | None = None
+    wrist_enabled: int | None = None  # 0/1
+    head_camera_fps: int | None = None
+    wrist_camera_fps: int | None = None
+    wrist_camera_type: str | None = None
+    wrist_camera_image_shape_h: int | None = None
+    wrist_camera_image_shape_w: int | None = None
+    wrist_camera_ids_csv: str | None = None
 
     def __post_init__(self):
         # HACK: We parse again the cli args here to get the pretrained path if there was one.

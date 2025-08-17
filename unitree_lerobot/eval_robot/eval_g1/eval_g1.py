@@ -62,6 +62,7 @@ def predict_action(observation, policy, device, use_amp):
 def eval_policy(
     policy: torch.nn.Module,
     dataset: LeRobotDataset,
+    cfg: EvalRealConfig,
 ):
     
     assert isinstance(policy, nn.Module), "Policy must be a PyTorch nn module."
@@ -70,22 +71,28 @@ def eval_policy(
     # Reset the policy and environments.
     policy.reset()
 
-    # image
+    # image from cfg overrides with sensible defaults
     img_config = {
-        'fps': 30,
-        'head_camera_type': 'opencv',
-        'head_camera_image_shape': [480, 1280],  # Head camera resolution
-        'head_camera_id_numbers': [0],
-        'wrist_camera_type': 'opencv',
-        'wrist_camera_image_shape': [480, 640],  # Wrist camera resolution
-        'wrist_camera_id_numbers': [2, 4],
+        'fps': cfg.head_camera_fps if cfg.head_camera_fps is not None else 30,
+        'head_camera_type': cfg.head_camera_type or 'opencv',
+        'head_camera_image_shape': [
+            cfg.head_camera_image_shape_h if cfg.head_camera_image_shape_h is not None else 480,
+            cfg.head_camera_image_shape_w if cfg.head_camera_image_shape_w is not None else 1280,
+        ],
+        'head_camera_id_numbers': [int(x) for x in (cfg.head_camera_ids_csv.split(',') if cfg.head_camera_ids_csv else ['0'])],
+        'wrist_camera_type': (cfg.wrist_camera_type if cfg.wrist_camera_type else 'opencv') if (cfg.wrist_enabled is None or int(cfg.wrist_enabled) == 1) else None,
+        'wrist_camera_image_shape': [
+            cfg.wrist_camera_image_shape_h if cfg.wrist_camera_image_shape_h is not None else 480,
+            cfg.wrist_camera_image_shape_w if cfg.wrist_camera_image_shape_w is not None else 640,
+        ],
+        'wrist_camera_id_numbers': [int(x) for x in (cfg.wrist_camera_ids_csv.split(',') if cfg.wrist_camera_ids_csv else ['2','4'])],
     }
     ASPECT_RATIO_THRESHOLD = 2.0 # If the aspect ratio exceeds this value, it is considered binocular
     if len(img_config['head_camera_id_numbers']) > 1 or (img_config['head_camera_image_shape'][1] / img_config['head_camera_image_shape'][0] > ASPECT_RATIO_THRESHOLD):
         BINOCULAR = True
     else:
         BINOCULAR = False
-    if 'wrist_camera_type' in img_config:
+    if 'wrist_camera_type' in img_config and img_config['wrist_camera_type']:
         WRIST = True
     else:
         WRIST = False
@@ -112,14 +119,16 @@ def eval_policy(
     image_receive_thread.start()
 
     robot_config = {
-        'arm_type': 'g1',
-        'hand_type': "dex3",
+        'arm_type': getattr(cfg, 'arm_type', 'g1'),
+        'hand_type': getattr(cfg, 'hand_type', 'dex3'),
     }
 
-    # init pose
-    from_idx = dataset.episode_data_index["from"][0].item()
+    # init pose from configured episode index (default 0)
+    _ep_idx = int(getattr(cfg, 'init_from_episode_index', 0))
+    _ep_idx = max(0, min(_ep_idx, len(dataset.episode_data_index["from"]) - 1))
+    from_idx = dataset.episode_data_index["from"][_ep_idx].item()
     step = dataset[from_idx]
-    to_idx = dataset.episode_data_index["to"][0].item()
+    to_idx = dataset.episode_data_index["to"][_ep_idx].item()
 
     # arm
     arm_ctrl = G1_29_ArmController()
@@ -149,8 +158,15 @@ def eval_policy(
         pass
 
     #===============init robot=====================
-    user_input = input("Please enter the start signal (enter 's' to start the subsequent program):")
-    if user_input.lower() == 's':
+    if getattr(cfg, 'default_start', True):
+        user_input_ok = True
+    else:
+        user_input = input("Please enter the start signal (enter 's' to start the subsequent program):")
+        user_input_ok = (user_input.lower() == 's')
+    if user_input_ok:
+
+        if getattr(cfg, 'startup_delay_s', 0.0) and cfg.startup_delay_s > 0:
+            time.sleep(cfg.startup_delay_s)
 
         # "The initial positions of the robot's arm and fingers take the initial positions during data recording."
         print("init robot pose")
@@ -161,7 +177,7 @@ def eval_policy(
         print("wait robot to pose")
         time.sleep(1)
 
-        frequency = 50.0
+        frequency = float(getattr(cfg, 'frequency', 50.0))
 
         while True:
 
@@ -231,7 +247,11 @@ def eval_main(cfg: EvalRealConfig):
 
     logging.info("Making policy.")
 
-    dataset = LeRobotDataset(repo_id = cfg.repo_id)
+    # prefer local dataset path when provided, else fall back to repo_id
+    if getattr(cfg, 'dataset_path', None):
+        dataset = LeRobotDataset(cfg.repo_id or "local_dataset", root = cfg.dataset_path)
+    else:
+        dataset = LeRobotDataset(repo_id = cfg.repo_id)
 
     policy = make_policy(
         cfg=cfg.policy,
@@ -240,7 +260,7 @@ def eval_main(cfg: EvalRealConfig):
     policy.eval()
 
     with torch.no_grad(), torch.autocast(device_type=device.type) if cfg.policy.use_amp else nullcontext():
-        eval_policy(policy, dataset)
+        eval_policy(policy, dataset, cfg)
 
     logging.info("End of eval")
 
