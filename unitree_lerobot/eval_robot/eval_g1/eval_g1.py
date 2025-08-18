@@ -38,13 +38,16 @@ def predict_action(observation, policy, device, use_amp):
         torch.inference_mode(),
         torch.autocast(device_type=device.type) if device.type == "cuda" and use_amp else nullcontext(),
     ):
-        # Convert to pytorch format: channel first and float32 in [0,1] with batch dimension
-        for name in observation:
-            if "images" in name:
-                observation[name] = observation[name].type(torch.float32) / 255
-                observation[name] = observation[name].permute(2, 0, 1).contiguous()
-            observation[name] = observation[name].unsqueeze(0)
-            observation[name] = observation[name].to(device)
+        # Convert tensors to pytorch format: channel first and float32 in [0,1] with batch dimension
+        for name, value in list(observation.items()):
+            if isinstance(value, torch.Tensor):
+                if "images" in name:
+                    value = value.type(torch.float32) / 255
+                    value = value.permute(2, 0, 1).contiguous()
+                observation[name] = value.unsqueeze(0).to(device)
+            else:
+                # keep non-tensor entries (e.g., 'task') as is
+                observation[name] = value
 
         # Compute the next action with the policy
         # based on the current observation
@@ -214,9 +217,15 @@ def eval_policy(
             
             observation["observation.state"] = torch.from_numpy(np.concatenate((current_lr_arm_q, left_hand_state, right_hand_state), axis=0)).float()
 
+            observation = {k: v for k, v in observation.items() if v is not None}
+            # Move only tensor observations to target device
+            tensor_obs = {k: v for k, v in observation.items() if isinstance(v, torch.Tensor)}
             observation = {
-                key: observation[key].to(device, non_blocking=device.type == "cuda") for key in observation
+                key: tensor_obs[key].to(device, non_blocking=device.type == "cuda") for key in tensor_obs
             }
+            # Inject natural language task as list[str] for batch size 1
+            task_text = getattr(cfg, 'task', "") if getattr(cfg, 'task', None) is not None else ""
+            observation['task'] = [task_text]
 
             action = predict_action(
                 observation, policy, get_safe_torch_device(policy.config.device), policy.config.use_amp

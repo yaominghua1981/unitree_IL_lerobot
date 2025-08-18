@@ -22,6 +22,8 @@ class EvalRealConfig:
     # evaluation controls
     default_start: bool = True
     startup_delay_s: float = 0.0
+    # natural language task instruction
+    task: str = ""
     # dataset episode selection
     episodes: str | None = None  # csv list of episode indices
     init_from_episode_index: int = 0
