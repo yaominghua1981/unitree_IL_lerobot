@@ -8,7 +8,7 @@ from multiprocessing import shared_memory
 
 class ImageClient:
     def __init__(self, tv_img_shape = None, tv_img_shm_name = None, wrist_img_shape = None, wrist_img_shm_name = None, 
-                       image_show = False, server_address = "192.168.123.164", port = 5555, Unit_Test = False):
+                       image_show = False, server_address = "192.168.123.164", port = 6688, Unit_Test = False):
         """
         tv_img_shape: User's expected head camera resolution shape (H, W, C). It should match the output of the image service terminal.
 
