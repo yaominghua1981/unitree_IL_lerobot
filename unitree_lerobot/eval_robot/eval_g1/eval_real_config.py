@@ -42,6 +42,12 @@ class EvalRealConfig:
     wrist_camera_image_shape_w: int | None = None
     wrist_camera_ids_csv: str | None = None
 
+    # smoothing (EMA) config; values in [0,1]. If per-part is None, fall back to global, then default.
+    smoothing_alpha_global: float | None = None
+    smoothing_alpha_arm: float | None = None
+    smoothing_alpha_leg: float | None = None
+    smoothing_alpha_hand: float | None = None
+
     def __post_init__(self):
         # HACK: We parse again the cli args here to get the pretrained path if there was one.
         policy_path = parser.get_path_arg("policy")

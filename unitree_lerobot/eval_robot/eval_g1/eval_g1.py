@@ -15,6 +15,7 @@ from dataclasses import asdict
 from torch import nn
 from contextlib import nullcontext
 from multiprocessing import shared_memory, Array, Lock
+from collections import deque
 
 from lerobot.policies.factory import make_policy
 from lerobot.policies.utils import get_device_from_parameters
@@ -182,6 +183,22 @@ def eval_policy(
 
         frequency = float(getattr(cfg, 'frequency', 50.0))
 
+        # EMA smoothing params (configurable). Fall back order: per-part -> global -> default 0.15
+        def _resolve_alpha(part_value, global_value, default_value=0.15):
+            return (
+                float(part_value)
+                if part_value is not None
+                else (float(global_value) if global_value is not None else float(default_value))
+            )
+
+        alpha_global = getattr(cfg, 'smoothing_alpha_global', None)
+        alpha_arm = _resolve_alpha(getattr(cfg, 'smoothing_alpha_arm', None), alpha_global)
+        alpha_hand = _resolve_alpha(getattr(cfg, 'smoothing_alpha_hand', None), alpha_global)
+        alpha_leg = _resolve_alpha(getattr(cfg, 'smoothing_alpha_leg', None), alpha_global)
+
+        # Last sent action snapshot
+        last_action = None  # will store the previously sent action for EMA
+
         while True:
 
             # Get images
@@ -231,17 +248,32 @@ def eval_policy(
                 observation, policy, get_safe_torch_device(policy.config.device), policy.config.use_amp
             )
             action = action.cpu().numpy()
+
+            # Exponential Moving Average smoothing
+            if last_action is None or last_action.shape != action.shape:
+                smoothed_action = action
+            else:
+                smoothed_action = action.copy()
+                # arm (0:14)
+                smoothed_action[:14] = last_action[:14] * (1.0 - alpha_arm) + action[:14] * alpha_arm
+                # hand (dex3: 14:28 or gripper: 14:16)。统一对 14: 末尾做手的 alpha_hand
+                smoothed_action[14:] = last_action[14:] * (1.0 - alpha_hand) + action[14:] * alpha_hand
+                # leg 保留接口，若未来有腿部维度，可在此单独平滑对应切片
+            last_action = smoothed_action
             
             # exec action
-            arm_ctrl.ctrl_dual_arm(action[:14], np.zeros(14))
+            arm_ctrl.ctrl_dual_arm(smoothed_action[:14], np.zeros(14))
             if robot_config['hand_type'] == "dex3":
-                left_hand_array[:] = action[14:21]
-                right_hand_array[:] = action[21:]
+                left_hand_array[:] = smoothed_action[14:21]
+                right_hand_array[:] = smoothed_action[21:]
             elif robot_config['hand_type'] == "gripper":
-                left_hand_array[:] = action[14]
-                right_hand_array[:] = action[15]
+                left_hand_array[:] = smoothed_action[14]
+                right_hand_array[:] = smoothed_action[15]
         
-            time.sleep(1/frequency)
+            #time.sleep(1/frequency)
+            from lerobot.utils.robot_utils import busy_wait
+            busy_wait(1/frequency)
+            # exec action
 
 
 @parser.wrap()
