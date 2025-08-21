@@ -114,9 +114,11 @@ def eval_policy(
         wrist_img_shm = shared_memory.SharedMemory(create = True, size = np.prod(wrist_img_shape) * np.uint8().itemsize)
         wrist_img_array = np.ndarray(wrist_img_shape, dtype = np.uint8, buffer = wrist_img_shm.buf)
         img_client = ImageClient(tv_img_shape = tv_img_shape, tv_img_shm_name = tv_img_shm.name, 
-                                 wrist_img_shape = wrist_img_shape, wrist_img_shm_name = wrist_img_shm.name)
+                                 wrist_img_shape = wrist_img_shape, wrist_img_shm_name = wrist_img_shm.name,
+                                 image_show = bool(getattr(cfg, 'image_show', False)))
     else:
-        img_client = ImageClient(tv_img_shape = tv_img_shape, tv_img_shm_name = tv_img_shm.name)
+        img_client = ImageClient(tv_img_shape = tv_img_shape, tv_img_shm_name = tv_img_shm.name,
+                                 image_show = bool(getattr(cfg, 'image_show', False)))
 
     image_receive_thread = threading.Thread(target = img_client.receive_process, daemon = True)
     image_receive_thread.daemon = True

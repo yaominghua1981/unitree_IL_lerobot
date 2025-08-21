@@ -41,6 +41,8 @@ class EvalRealConfig:
     wrist_camera_image_shape_h: int | None = None
     wrist_camera_image_shape_w: int | None = None
     wrist_camera_ids_csv: str | None = None
+    # display
+    image_show: bool = False
 
     # smoothing (EMA) config; values in [0,1]. If per-part is None, fall back to global, then default.
     smoothing_alpha_global: float | None = None
