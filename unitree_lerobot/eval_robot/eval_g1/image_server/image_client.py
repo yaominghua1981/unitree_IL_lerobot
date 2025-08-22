@@ -8,7 +8,7 @@ from multiprocessing import shared_memory
 
 class ImageClient:
     def __init__(self, tv_img_shape = None, tv_img_shm_name = None, wrist_img_shape = None, wrist_img_shm_name = None, 
-                       image_show = False, server_address = "192.168.123.164", port = 6688, Unit_Test = False):
+                       image_show = False, server_address = "192.168.123.164", port = 6689, Unit_Test = False):
         """
         tv_img_shape: User's expected head camera resolution shape (H, W, C). It should match the output of the image service terminal.
 
@@ -130,6 +130,14 @@ class ImageClient:
         self._socket.setsockopt_string(zmq.SUBSCRIBE, "")
 
         print("\nImage client has started, waiting to receive data...")
+        print(f"[Image Client] Expected image dimensions: height={480}, width=2560 (head: 1280 + wrist: 1280)")
+        print(f"[Image Client] Note: Client will adapt to actual image width and report missing parts")
+        if self.tv_enable_shm:
+            print(f"[Image Client] Head camera shared memory enabled: {self.tv_img_shape}")
+        if self.wrist_enable_shm:
+            print(f"[Image Client] Wrist camera shared memory enabled: {self.wrist_img_shape}")
+        else:
+            print(f"[Image Client] Wrist camera shared memory disabled - data will be received but not processed")
         try:
             while self.running:
                 # Receive message
@@ -156,18 +164,95 @@ class ImageClient:
                     print("[Image Client] Failed to decode image.")
                     continue
 
+                # 验证接收到的图像尺寸并分析缺失部分
+                height, width = current_image.shape[:2]
+                
+                # 分析图像组成
+                head_width = 1280  # 头部相机固定宽度
+                expected_total_width = 2560  # 期望的总宽度
+                
+                if width < head_width:
+                    print(f"[Image Client] Error: Image width {width} is too small, cannot extract head camera data (need at least {head_width})")
+                    continue
+                
+                # 计算腕部相机部分的宽度
+                wrist_width = width - head_width
+                
+                # 分析缺失情况
+                missing_parts = []
+                if width < expected_total_width:
+                    missing_width = expected_total_width - width
+                    if missing_width == 640:
+                        missing_parts.append("right wrist camera (640 width)")
+                    elif missing_width == 1280:
+                        missing_parts.append("entire wrist camera section (1280 width)")
+                    else:
+                        missing_parts.append(f"partial wrist camera section ({missing_width} width)")
+                
+                # 报告图像状态（只在首次或状态变化时打印）
+                if missing_parts:
+                    if not hasattr(self, '_last_missing_state') or self._last_missing_state != missing_parts:
+                        print(f"[Image Client] Warning: Image width {width} < expected {expected_total_width}")
+                        print(f"[Image Client] Missing: {', '.join(missing_parts)}")
+                        self._last_missing_state = missing_parts
+                else:
+                    if hasattr(self, '_last_missing_state') and self._last_missing_state is not None:
+                        print(f"[Image Client] Info: Full image restored - width {width} = expected {expected_total_width}")
+                        self._last_missing_state = None
+                
+                # 处理头部相机数据
                 if self.tv_enable_shm:
-                    np.copyto(self.tv_img_array, np.array(current_image[:, :self.tv_img_shape[1]]))
+                    try:
+                        if width >= head_width:
+                            np.copyto(self.tv_img_array, current_image[:, :head_width])
+                            # 只在首次成功时打印
+                            if not hasattr(self, '_head_camera_working'):
+                                print(f"[Image Client] Head camera data processing started ({head_width} width)")
+                                self._head_camera_working = True
+                        else:
+                            if not hasattr(self, '_head_camera_error_reported'):
+                                print(f"[Image Client] Error: Cannot copy head camera data - insufficient width")
+                                self._head_camera_error_reported = True
+                    except Exception as e:
+                        print(f"[Image Client] Error copying head camera data: {e}")
                 
+                # 处理腕部相机数据
                 if self.wrist_enable_shm:
-                    np.copyto(self.wrist_img_array, np.array(current_image[:, -self.wrist_img_shape[1]:]))
+                    try:
+                        if wrist_width > 0:
+                            np.copyto(self.wrist_img_array, current_image[:, head_width:])
+                            
+                            # 只在状态变化时打印
+                            current_wrist_state = f"wrist_{wrist_width}"
+                            if not hasattr(self, '_last_wrist_state') or self._last_wrist_state != current_wrist_state:
+                                if wrist_width == 640:
+                                    print(f"[Image Client] Wrist camera: single camera mode ({wrist_width} width)")
+                                elif wrist_width == 1280:
+                                    print(f"[Image Client] Wrist camera: dual camera mode ({wrist_width} width)")
+                                else:
+                                    print(f"[Image Client] Wrist camera: partial data ({wrist_width} width)")
+                                self._last_wrist_state = current_wrist_state
+                        else:
+                            if not hasattr(self, '_wrist_no_data_reported'):
+                                print(f"[Image Client] Warning: No wrist camera data available")
+                                self._wrist_no_data_reported = True
+                    except Exception as e:
+                        print(f"[Image Client] Error copying wrist camera data: {e}")
+                else:
+                    # 腕部相机共享内存未启用，但数据仍然被接收
+                    if not hasattr(self, '_wrist_disabled_reported'):
+                        print(f"[Image Client] Wrist camera shared memory disabled - data received but not processed")
+                        self._wrist_disabled_reported = True
                 
+                # 显示图像（如果启用）
                 if self._image_show:
-                    height, width = current_image.shape[:2]
-                    resized_image = cv2.resize(current_image, (width // 2, height // 2))
-                    cv2.imshow('Image Client Stream', resized_image)
-                    if cv2.waitKey(1) & 0xFF == ord('q'):
-                        self.running = False
+                    try:
+                        resized_image = cv2.resize(current_image, (width // 2, height // 2))
+                        cv2.imshow('Image Client Stream', resized_image)
+                        if cv2.waitKey(1) & 0xFF == ord('q'):
+                            self.running = False
+                    except Exception as e:
+                        print(f"[Image Client] Error displaying image: {e}")
 
                 if self._enable_performance_eval:
                     self._update_performance_metrics(timestamp, frame_id, receive_time)
