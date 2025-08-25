@@ -555,30 +555,8 @@ def init_robot_control(cfg: EvalRealConfig):
     Returns:
         Tuple containing arm_controller and hand_controller if send_real_robot is True, else (None, None)
     """
-    if not cfg.robot.send_real_robot:
-        return None, None
-        
-    try:
-        # Initialize arm controller
-        if cfg.robot.arm_type == "g1":
-            arm_controller = G1_29_ArmController()
-            logging.info("G1 arm controller initialized")
-        else:
-            raise ValueError(f"Unsupported arm type: {cfg.robot.arm_type}")
-        
-        # Initialize hand controller
-        if cfg.robot.hand_type == "dex3":
-            hand_controller = Dex3_1_Controller()
-            logging.info("Dex3 hand controller initialized")
-        else:
-            hand_controller = Gripper_Controller()
-            logging.info("Gripper controller initialized")
-            
-        return arm_controller, hand_controller
-        
-    except Exception as e:
-        logging.error(f"Failed to initialize robot controllers: {str(e)}")
-        raise
+    # Align with eval_g1.py: initialize controllers inside eval loop function
+    return None, None
 
 def send_robot_command(arm_controller, hand_controller, action):
     """Send command to the robot.
