@@ -210,12 +210,23 @@ def eval_main(cfg: EvalRealConfig):
     torch.backends.cudnn.benchmark = True
     torch.backends.cuda.matmul.allow_tf32 = True
 
-    logging.info("Making policy.")
+    logging.info("Loading dataset...")
+    dataset_kwargs = {}
+    if hasattr(cfg, 'dataset_path') and cfg.dataset_path:
+        dataset_kwargs['root'] = cfg.dataset_path
+    if hasattr(cfg, 'repo_id') and cfg.repo_id:
+        dataset_kwargs['repo_id'] = cfg.repo_id
+    
+    dataset = LeRobotDataset(**dataset_kwargs)
 
-    dataset = LeRobotDataset(repo_id = cfg.repo_id)
-
+    logging.info("Making policy...")
+    # Ensure policy type is set if specified in config
+    policy_cfg = cfg.policy
+    if not hasattr(policy_cfg, 'type') and hasattr(cfg, 'policy_type'):
+        policy_cfg.type = cfg.policy_type
+        
     policy = make_policy(
-        cfg=cfg.policy,
+        cfg=policy_cfg,
         ds_meta=dataset.meta
     )
     policy.eval()
