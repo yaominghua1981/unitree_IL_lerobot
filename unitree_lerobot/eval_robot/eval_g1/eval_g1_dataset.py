@@ -31,7 +31,7 @@ from unitree_lerobot.eval_robot.eval_g1.eval_real_config import EvalRealConfig
 
 
 # copy from lerobot.common.robot_devices.control_utils import predict_action
-def predict_action(observation, policy, device, use_amp):
+def predict_action(observation, policy, device, use_amp, show_camera=False):
     observation = copy(observation)
     with (
         torch.inference_mode(),
@@ -39,9 +39,16 @@ def predict_action(observation, policy, device, use_amp):
     ):
         # Convert to pytorch format: channel first and float32 in [0,1] with batch dimension
         for name in observation:
-            # if "images" in name:
-            #     observation[name] = observation[name].type(torch.float32) / 255
-            #     observation[name] = observation[name].permute(2, 0, 1).contiguous()
+            if show_camera and "images" in name and isinstance(observation[name], torch.Tensor):
+                # Convert tensor to numpy for display
+                img = observation[name].cpu().numpy()
+                if img.dtype == np.float32 and img.max() <= 1.0:
+                    img = (img * 255).astype(np.uint8)
+                if len(img.shape) == 3 and img.shape[0] == 3:  # CHW to HWC
+                    img = img.transpose(1, 2, 0)
+                cv2.imshow('Camera Feed', img)
+                cv2.waitKey(1)  # Small delay to allow window to update
+                
             observation[name] = observation[name].unsqueeze(0)
             observation[name] = observation[name].to(device)
 
@@ -61,9 +68,19 @@ def predict_action(observation, policy, device, use_amp):
 def eval_policy(
     policy: torch.nn.Module,
     dataset: LeRobotDataset,
+    show_camera: bool = False
 ):
     
     assert isinstance(policy, nn.Module), "Policy must be a PyTorch nn module."
+    
+    # Initialize OpenCV if show_camera is True
+    if show_camera:
+        try:
+            import cv2
+            cv2.namedWindow('Camera Feed', cv2.WINDOW_NORMAL)
+        except ImportError:
+            logging.warning("OpenCV not found. Camera display will be disabled.")
+            show_camera = False
 
     # Reset the policy and environments.
     policy.reset()
@@ -131,14 +148,10 @@ def eval_policy(
 
         for step_idx in tqdm.tqdm(range(from_idx, to_idx)):
             step = dataset[step_idx]
-            observation = {}
-
-            for cam_name in camera_names:
-                observation[f"observation.images.{cam_name}"] = step[f"observation.images.{cam_name}"]
-            observation["observation.state"] = step["observation.state"]
+            observation = {k: torch.from_numpy(v) for k, v in step['observation'].items()}
 
             action = predict_action(
-                observation, policy, get_safe_torch_device(policy.config.device), policy.config.use_amp
+                observation, policy, get_safe_torch_device(policy.config.device), policy.config.use_amp, show_camera=show_camera
             )
 
             action = action.cpu().numpy()
@@ -208,7 +221,7 @@ def eval_main(cfg: EvalRealConfig):
     policy.eval()
 
     with torch.no_grad(), torch.autocast(device_type=device.type) if cfg.policy.use_amp else nullcontext():
-        eval_policy(policy, dataset)
+        eval_policy(policy, dataset, show_camera=getattr(cfg, 'image_show', False))
 
     logging.info("End of eval")
 
