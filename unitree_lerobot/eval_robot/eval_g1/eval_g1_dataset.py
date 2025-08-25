@@ -9,13 +9,22 @@ import tqdm
 import logging
 import time
 import numpy as np
-# Make matplotlib optional to avoid NumPy version conflicts
+# Enable matplotlib with NumPy 1.24.3 compatibility
+import warnings
+warnings.filterwarnings("ignore", message=".*NumPy.*")
+
 try:
+    import matplotlib
+    matplotlib.use('Agg')  # Use non-interactive backend
     import matplotlib.pyplot as plt
     MATPLOTLIB_AVAILABLE = True
-except ImportError:
+    print("matplotlib successfully imported")
+except ImportError as e:
     MATPLOTLIB_AVAILABLE = False
-    logging.warning("matplotlib not available, visualization will be disabled")
+    print(f"matplotlib not available: {e}")
+except Exception as e:
+    MATPLOTLIB_AVAILABLE = False
+    print(f"matplotlib import failed: {e}")
 from copy import copy
 from pprint import pformat
 from torch import nn
@@ -30,10 +39,12 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-# Also add the lerobot directory specifically
-lerobot_path = os.path.join(project_root, 'lerobot')
-if os.path.exists(lerobot_path) and lerobot_path not in sys.path:
-    sys.path.insert(0, lerobot_path)
+# Add the correct lerobot source directory
+lerobot_src_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'lerobot', 'src'))
+if os.path.exists(lerobot_src_path) and lerobot_src_path not in sys.path:
+    sys.path.insert(0, lerobot_src_path)
+    
+print(f"Added lerobot path: {lerobot_src_path}")
 
 import argparse
 from dataclasses import dataclass, field, asdict
@@ -644,9 +655,11 @@ def eval_main(cfg: EvalRealConfig):
             with open(config_path, 'r') as f:
                 config_data = json.load(f)
             
-            # Remove the 'type' field as it's not valid for SmolVLAConfig
-            if 'type' in config_data:
-                del config_data['type']
+            # Remove invalid fields for SmolVLAConfig
+            invalid_fields = ['type', 'proj_width', 'attention_implementation']
+            for field in invalid_fields:
+                if field in config_data:
+                    del config_data[field]
             
             # Convert normalization mapping strings to enum values
             if 'normalization_mapping' in config_data:
@@ -661,6 +674,21 @@ def eval_main(cfg: EvalRealConfig):
         else:
             # Fallback to default config if local config not found
             policy_cfg = SmolVLAConfig()
+        
+        # Load smolvla config from dataset config file to override parameters
+        dataset_config_path = '/home/lin/youkechuiguo/youkechuiguo_robot/config/eval/config_eval_smolvla/config_dataset.json'
+        if os.path.exists(dataset_config_path):
+            with open(dataset_config_path, 'r') as f:
+                dataset_config = json.load(f)
+            if 'smolvla' in dataset_config:
+                smolvla_config = dataset_config['smolvla']
+                # Override all SmolVLA parameters from config_dataset.json
+                for key, value in smolvla_config.items():
+                    if hasattr(policy_cfg, key):
+                        setattr(policy_cfg, key, value)
+                        print(f"Override {key}: {value}")
+                    else:
+                        print(f"Warning: {key} is not a valid SmolVLAConfig parameter")
         
         # Update with our settings
         policy_cfg.use_amp = cfg.policy.use_amp
